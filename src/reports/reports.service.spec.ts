@@ -29,7 +29,6 @@ describe('ReportsService', () => {
   describe('fs', () => {
     it('should change state from idle', () => {
       service.fs();
-      console.log(service.state('fs'));
       expect(service.state('fs')).not.toBe('idle');
     });
   });
@@ -48,7 +47,6 @@ describe('ReportsService', () => {
   describe('asyncFs', () => {
     it('should change state from idle', async () => {
       await service.asyncFs();
-      console.log(service.state('fs'));
       expect(service.state('fs')).not.toBe('idle');
     });
   });
