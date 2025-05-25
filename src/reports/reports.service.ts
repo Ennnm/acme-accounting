@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { performance } from 'perf_hooks';
+
+import { Worker } from 'worker_threads';
+import { createWriteStream } from 'fs';
+import { promises as fsPromises } from 'fs';
+
+interface WorkerResponse {
+  error?: string;
+  [key: string]: number | string | undefined;
+}
 
 @Injectable()
 export class ReportsService {
@@ -43,6 +52,122 @@ export class ReportsService {
     }
     fs.writeFileSync(outputFile, output.join('\n'));
     this.states.accounts = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
+  }
+
+  async asyncAccounts() {
+    this.states.accounts = 'starting';
+    const start = performance.now();
+    const tmpDir = 'tmp';
+    const outputFile = 'out/accounts.csv';
+
+    // Get list of CSV files and split into chunks for parallel processing
+    const files = (await fsPromises.readdir(tmpDir)).filter((file) =>
+      file.endsWith('.csv'),
+    );
+    const chunks = this.splitIntoChunks(files, 4); // Process in 4 parallel chunks
+
+    // Process chunks in parallel using worker threads
+    const results = await Promise.all(
+      chunks.map((chunk) => this.processChunkWithWorker(chunk, tmpDir)),
+    );
+
+    // Merge results from all workers
+    const accountBalances = this.mergeResults(results);
+
+    // Write results using streams
+    await this.writeResultsToFile(accountBalances, outputFile);
+
+    this.states.accounts = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
+    return accountBalances;
+  }
+
+  private splitIntoChunks(array: string[], chunks: number): string[][] {
+    const chunkSize = Math.ceil(array.length / chunks);
+    return Array.from({ length: Math.ceil(array.length / chunkSize) }, (_, i) =>
+      array.slice(i * chunkSize, (i + 1) * chunkSize),
+    );
+  }
+
+  private processChunkWithWorker(
+    files: string[],
+    tmpDir: string,
+  ): Promise<Record<string, number>> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        `
+        const { parentPort } = require('worker_threads');
+        const { createReadStream } = require('fs');
+        const { createInterface } = require('readline');
+        const path = require('path');
+
+        async function processFiles(files, tmpDir) {
+          const balances = {};
+
+          for (const file of files) {
+            const fileStream = createReadStream(path.join(tmpDir, file));
+            const rl = createInterface({ input: fileStream });
+
+            for await (const line of rl) {
+              const [, account, , debit, credit] = line.split(',');
+              balances[account] = (balances[account] || 0) +
+                parseFloat(String(debit || 0)) - parseFloat(String(credit || 0));
+            }
+          }
+          return balances;
+        }
+
+        parentPort.on('message', async ({ files, tmpDir }) => {
+          try {
+            const result = await processFiles(files, tmpDir);
+            parentPort.postMessage(result);
+          } catch (error) {
+            parentPort.postMessage({ error: error.message });
+          }
+        });
+      `,
+        { eval: true },
+      );
+
+      worker.postMessage({ files, tmpDir });
+      worker.on('message', (result: WorkerResponse) => {
+        if (result.error) {
+          reject(new Error(result.error));
+        } else {
+          resolve(result as Record<string, number>);
+        }
+        worker.terminate();
+      });
+      worker.on('error', reject);
+    });
+  }
+
+  private mergeResults(
+    results: Record<string, number>[],
+  ): Record<string, number> {
+    return results.reduce((acc, curr) => {
+      for (const [account, balance] of Object.entries(curr)) {
+        acc[account] = (acc[account] || 0) + balance;
+      }
+      return acc;
+    }, {});
+  }
+
+  private async writeResultsToFile(
+    accountBalances: Record<string, number>,
+    outputFile: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const writeStream = createWriteStream(outputFile);
+      writeStream.write('Account,Balance\n');
+
+      for (const [account, balance] of Object.entries(accountBalances)) {
+        writeStream.write(`${account},${balance.toFixed(2)}\n`);
+      }
+
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
   }
 
   yearly() {
