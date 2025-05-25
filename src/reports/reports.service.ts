@@ -156,7 +156,10 @@ export class ReportsService {
         }
         worker.terminate();
       });
-      worker.on('error', reject);
+      worker.on('error', (e) => {
+        reject(e);
+        worker.terminate();
+      });
     });
   }
 
@@ -240,10 +243,12 @@ export class ReportsService {
         }
         worker.terminate();
       });
-      worker.on('error', reject);
+      worker.on('error', (e) => {
+        reject(e);
+        worker.terminate();
+      });
     });
   }
-
   async asyncYearly() {
     this.states.yearly = 'starting';
     const start = performance.now();
@@ -364,7 +369,10 @@ export class ReportsService {
         }
         worker.terminate();
       });
-      worker.on('error', reject);
+      worker.on('error', (e) => {
+        reject(e);
+        worker.terminate();
+      });
     });
   }
 
