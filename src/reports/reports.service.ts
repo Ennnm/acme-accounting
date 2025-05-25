@@ -126,7 +126,7 @@ export class ReportsService {
   ): Promise<Record<string, number>> {
     return new Promise((resolve, reject) => {
       const worker = new Worker(
-        path.resolve(__dirname, 'workers', 'account.js'),
+        path.resolve(__dirname, '../workers', 'account.js'),
       );
 
       worker.postMessage({ files, tmpDir });
@@ -148,7 +148,7 @@ export class ReportsService {
   ): Promise<Record<string, number>> {
     return new Promise((resolve, reject) => {
       const worker = new Worker(
-        path.resolve(__dirname, 'workers', 'yearly.js'),
+        path.resolve(__dirname, '../workers', 'yearly.js'),
       );
 
       worker.postMessage({ files, tmpDir });
@@ -170,7 +170,7 @@ export class ReportsService {
     categories: Record<string, Record<string, string[]>>,
   ): Promise<Record<string, number>> {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(path.resolve(__dirname, 'workers', 'fs.js'));
+      const worker = new Worker(path.resolve(__dirname, '../workers', 'fs.js'));
       const balance = this.createEmptyBalanceSheet(categories);
       worker.postMessage({ files, tmpDir, balance });
       worker.on('message', (result: WorkerResponse) => {
