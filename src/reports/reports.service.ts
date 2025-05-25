@@ -52,7 +52,7 @@ export class ReportsService {
     },
   };
 
-  state(scope: string) {
+  state(scope: keyof typeof this.states) {
     return this.states[scope];
   }
 
