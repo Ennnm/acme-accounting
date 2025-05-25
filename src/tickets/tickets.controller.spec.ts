@@ -198,6 +198,86 @@ describe('TicketsController', () => {
         );
       });
     });
+    describe('strikeOff', () => {
+      it('creates strikeOff ticket', async () => {
+        const company = await Company.create({ name: 'test' });
+        const user = await User.create({
+          name: 'Test User',
+          role: UserRole.director,
+          companyId: company.id,
+        });
+
+        const ticket = await controller.create({
+          companyId: company.id,
+          type: TicketType.strikeOff,
+        });
+
+        expect(ticket.category).toBe(TicketCategory.management);
+        expect(ticket.assigneeId).toBe(user.id);
+        expect(ticket.status).toBe(TicketStatus.open);
+      });
+      it('creates strikeOff ticket, resolves all other active tickets in the company', async () => {
+        const company = await Company.create({ name: 'test' });
+        const user = await User.create({
+          name: 'Test User',
+          role: UserRole.director,
+          companyId: company.id,
+        });
+
+        await Ticket.create({
+          companyId: company.id,
+          type: TicketType.managementReport,
+          status: TicketStatus.open,
+          category: TicketCategory.accounting,
+        });
+        await Ticket.create({
+          companyId: company.id,
+          type: TicketType.registrationAddressChange,
+          status: TicketStatus.open,
+          category: TicketCategory.corporate,
+        });
+
+        const ticket = await controller.create({
+          companyId: company.id,
+          type: TicketType.strikeOff,
+        });
+
+        expect(ticket.category).toBe(TicketCategory.management);
+        expect(ticket.assigneeId).toBe(user.id);
+        expect(ticket.status).toBe(TicketStatus.open);
+
+        const openTickets = await Ticket.findAll({
+          where: { companyId: company.id, status: TicketStatus.open },
+        });
+        expect(openTickets.length).toBe(1);
+
+        const closedTickets = await Ticket.findAll({
+          where: { companyId: company.id, status: TicketStatus.resolved },
+        });
+        expect(closedTickets.length).toBe(2);
+      });
+
+      it('if there are multiple directors, throw', async () => {
+        const company = await Company.create({ name: 'test' });
+        await User.create({
+          name: 'Test User',
+          role: UserRole.director,
+          companyId: company.id,
+        });
+        await User.create({
+          name: 'Test User',
+          role: UserRole.director,
+          companyId: company.id,
+        });
+
+        await expect(
+          controller.create({
+            companyId: company.id,
+            type: TicketType.strikeOff,
+          }),
+        ).rejects.toEqual(
+          new ConflictException(
+            `Multiple users with role director. Cannot create a ticket`,
           ),
         );
       });

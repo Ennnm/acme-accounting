@@ -24,8 +24,11 @@ export class TicketsController {
           ticket =
             await this.ticketService.handleRegistrationAddressChange(companyId);
           break;
-        default:
+        case TicketType.managementReport:
           ticket = await this.ticketService.handleManagementReport(companyId);
+          break;
+        default:
+          ticket = await this.ticketService.handleStrikeOff(companyId);
           break;
       }
     } catch (e) {
