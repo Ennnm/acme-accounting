@@ -17,9 +17,14 @@ export class ReportsController {
   @Post()
   @HttpCode(201)
   generate() {
-    this.reportsService.accounts();
-    this.reportsService.yearly();
-    this.reportsService.fs();
-    return { message: 'finished' };
+    Promise.all([
+      this.reportsService.asyncAccounts(),
+      this.reportsService.asyncYearly(),
+      this.reportsService.asyncFs(),
+    ]).catch((error) => console.error('Report generation error:', error));
+    return {
+      message: 'Report generation started',
+      status: 'processing',
+    };
   }
 }

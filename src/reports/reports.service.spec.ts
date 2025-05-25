@@ -3,7 +3,6 @@ import { ReportsService } from './reports.service';
 
 describe('ReportsService', () => {
   let service: ReportsService;
-
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [ReportsService],
@@ -14,5 +13,41 @@ describe('ReportsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+  describe('accounts', () => {
+    it('should change state from idle', () => {
+      service.accounts();
+      expect(service.state('accounts')).not.toBe('idle');
+    });
+  });
+  describe('yearly', () => {
+    it('should change state from idle', () => {
+      service.yearly();
+      expect(service.state('yearly')).not.toBe('idle');
+    });
+  });
+  describe('fs', () => {
+    it('should change state from idle', () => {
+      service.fs();
+      expect(service.state('fs')).not.toBe('idle');
+    });
+  });
+  describe('asyncAccounts', () => {
+    it('should change state from idle', async () => {
+      await service.asyncAccounts();
+      expect(service.state('accounts')).not.toBe('idle');
+    });
+  });
+  describe('asyncYearly', () => {
+    it('should change state from idle', async () => {
+      await service.asyncYearly();
+      expect(service.state('yearly')).not.toBe('idle');
+    });
+  });
+  describe('asyncFs', () => {
+    it('should change state from idle', async () => {
+      await service.asyncFs();
+      expect(service.state('fs')).not.toBe('idle');
+    });
   });
 });
