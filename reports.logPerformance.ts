@@ -3,7 +3,7 @@ import { ReportsService } from './src/reports/reports.service';
 
 class ReportServiceLogPerformance {
   svc = new ReportsService();
-  metricsFolder: string = 'metrics/reports';
+  metricsFolder: string = 'metrics/reports/initial';
 
   private extractTime(state: string): number {
     const match = state.match(/finished in (\d+\.?\d*)/);
@@ -44,4 +44,4 @@ class ReportServiceLogPerformance {
 }
 
 const reportPerformance = new ReportServiceLogPerformance();
-reportPerformance.runMultipleTimes(10);
+reportPerformance.runMultipleTimes(1);
