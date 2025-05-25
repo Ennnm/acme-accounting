@@ -39,7 +39,7 @@ class ReportServiceLogPerformance {
   async run() {
     await this.svc.asyncAccounts();
     await this.svc.asyncYearly();
-    this.svc.fs();
+    await this.svc.asyncFs();
   }
 }
 
