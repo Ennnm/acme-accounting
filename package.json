@@ -16,7 +16,9 @@
     "postinstall": "node generate.js",
     "db:migrate:test": "NODE_ENV=test sequelize db:migrate",
     "db:create:test": "NODE_ENV=test sequelize db:create",
-    "db:reset": "sequelize db:migrate:undo:all"
+    "db:reset": "sequelize db:migrate:undo:all",
+    "log:report:perf": "tsc reports.logPerformance.ts && node reports.logPerformance.js",
+    "log:asyncReport:perf": "tsc asyncReports.logPerformance.ts && node asyncReports.logPerformance.js"
   },
   "dependencies": {
     "@nestjs/common": "11.0.12",
