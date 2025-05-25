@@ -1,12 +1,14 @@
 import { Body, ConflictException, Controller, Get, Post } from '@nestjs/common';
 import { Company } from '../../db/models/Company';
-import { User, UserRole } from '../../db/models/User';
-
 import { Ticket, TicketType } from '../../db/models/Ticket';
+import { User } from '../../db/models/User';
 import { newTicketDto, TicketDto } from './tickets.interface';
+import { TicketService } from './tickets.service';
 
 @Controller('api/v1/tickets')
 export class TicketsController {
+  constructor(private ticketService: TicketService) {}
+
   @Get()
   async findAll() {
     return await Ticket.findAll({ include: [Company, User] });
@@ -15,41 +17,22 @@ export class TicketsController {
   @Post()
   async create(@Body() newTicketDto: newTicketDto) {
     const { type, companyId } = newTicketDto;
-
-    const category =
-      type === TicketType.managementReport
-        ? TicketCategory.accounting
-        : TicketCategory.corporate;
-
-    const userRole =
-      type === TicketType.managementReport
-        ? UserRole.accountant
-        : UserRole.corporateSecretary;
-
-    const assignees = await User.findAll({
-      where: { companyId, role: userRole },
-      order: [['createdAt', 'DESC']],
-    });
-
-    if (!assignees.length)
-      throw new ConflictException(
-        `Cannot find user with role ${userRole} to create a ticket`,
-      );
-
-    if (userRole === UserRole.corporateSecretary && assignees.length > 1)
-      throw new ConflictException(
-        `Multiple users with role ${userRole}. Cannot create a ticket`,
-      );
-
-    const assignee = assignees[0];
-
-    const ticket = await Ticket.create({
-      companyId,
-      assigneeId: assignee.id,
-      category,
-      type,
-      status: TicketStatus.open,
-    });
+    let ticket: Ticket;
+    try {
+      switch (type) {
+        case TicketType.registrationAddressChange:
+          ticket =
+            await this.ticketService.handleRegistrationAddressChange(companyId);
+          break;
+        default:
+          ticket = await this.ticketService.handleManagementReport(companyId);
+          break;
+      }
+    } catch (e) {
+      const errorMessage =
+        e instanceof Error ? e.message : 'An unknown error occurred';
+      throw new ConflictException(errorMessage);
+    }
 
     const ticketDto: TicketDto = {
       id: ticket.id,
