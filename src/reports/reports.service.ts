@@ -55,6 +55,58 @@ export class ReportsService {
   state(scope: keyof typeof this.states) {
     return this.states[scope];
   }
+  private splitIntoChunks(array: string[], chunks: number): string[][] {
+    const chunkSize = Math.ceil(array.length / chunks);
+    return Array.from({ length: Math.ceil(array.length / chunkSize) }, (_, i) =>
+      array.slice(i * chunkSize, (i + 1) * chunkSize),
+    );
+  }
+
+  private mergeResults(
+    results: Record<string, number>[],
+  ): Record<string, number> {
+    return results.reduce((total, curr) => {
+      for (const [key, val] of Object.entries(curr)) {
+        total[key] = (total[key] || 0) + val;
+      }
+      return total;
+    }, {});
+  }
+
+  private async writeLinesToFile(
+    header: string,
+    lines: string[],
+    outputFile: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const writeStream = createWriteStream(outputFile);
+      writeStream.write(`${header}\n`);
+      for (const l of lines) {
+        writeStream.write(`${l}\n`);
+      }
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+  }
+
+  private async writeAccountResultsToFile(
+    accountBalances: Record<string, number>,
+    outputFile: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const writeStream = createWriteStream(outputFile);
+      writeStream.write('Account,Balance\n');
+
+      for (const [account, balance] of Object.entries(accountBalances)) {
+        writeStream.write(`${account},${balance.toFixed(2)}\n`);
+      }
+
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+  }
 
   accounts() {
     this.states.accounts = 'starting';
@@ -86,6 +138,28 @@ export class ReportsService {
     this.states.accounts = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
   }
 
+  private processAccountChunkWithWorker(
+    files: string[],
+    tmpDir: string,
+  ): Promise<Record<string, number>> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        path.resolve(__dirname, '../workers', 'account.js'),
+      );
+
+      worker.postMessage({ files, tmpDir });
+      worker.on('message', (result: WorkerResponse) => {
+        if (result.error) {
+          reject(new Error(result.error));
+        } else {
+          resolve(result as Record<string, number>);
+        }
+        worker.terminate();
+      });
+      worker.on('error', reject);
+    });
+  }
+
   async asyncAccounts() {
     this.states.accounts = 'starting';
     const start = performance.now();
@@ -111,123 +185,6 @@ export class ReportsService {
 
     this.states.accounts = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
     return accountBalances;
-  }
-
-  private splitIntoChunks(array: string[], chunks: number): string[][] {
-    const chunkSize = Math.ceil(array.length / chunks);
-    return Array.from({ length: Math.ceil(array.length / chunkSize) }, (_, i) =>
-      array.slice(i * chunkSize, (i + 1) * chunkSize),
-    );
-  }
-
-  private processAccountChunkWithWorker(
-    files: string[],
-    tmpDir: string,
-  ): Promise<Record<string, number>> {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(
-        path.resolve(__dirname, '../workers', 'account.js'),
-      );
-
-      worker.postMessage({ files, tmpDir });
-      worker.on('message', (result: WorkerResponse) => {
-        if (result.error) {
-          reject(new Error(result.error));
-        } else {
-          resolve(result as Record<string, number>);
-        }
-        worker.terminate();
-      });
-      worker.on('error', reject);
-    });
-  }
-
-  private processYearlyChunkWithWorker(
-    files: string[],
-    tmpDir: string,
-  ): Promise<Record<string, number>> {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(
-        path.resolve(__dirname, '../workers', 'yearly.js'),
-      );
-
-      worker.postMessage({ files, tmpDir });
-      worker.on('message', (result: WorkerResponse) => {
-        if (result.error) {
-          reject(new Error(result.error));
-        } else {
-          resolve(result as Record<string, number>);
-        }
-        worker.terminate();
-      });
-      worker.on('error', reject);
-    });
-  }
-
-  private processFsChunkWithWorker(
-    files: string[],
-    tmpDir: string,
-    categories: Record<string, Record<string, string[]>>,
-  ): Promise<Record<string, number>> {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(path.resolve(__dirname, '../workers', 'fs.js'));
-      const balance = this.createEmptyBalanceSheet(categories);
-      worker.postMessage({ files, tmpDir, balance });
-      worker.on('message', (result: WorkerResponse) => {
-        if (result.error) {
-          reject(new Error(result.error));
-        } else {
-          resolve(result as Record<string, number>);
-        }
-        worker.terminate();
-      });
-      worker.on('error', reject);
-    });
-  }
-
-  private mergeResults(
-    results: Record<string, number>[],
-  ): Record<string, number> {
-    return results.reduce((total, curr) => {
-      for (const [key, val] of Object.entries(curr)) {
-        total[key] = (total[key] || 0) + val;
-      }
-      return total;
-    }, {});
-  }
-
-  private async writeAccountResultsToFile(
-    accountBalances: Record<string, number>,
-    outputFile: string,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const writeStream = createWriteStream(outputFile);
-      writeStream.write('Account,Balance\n');
-
-      for (const [account, balance] of Object.entries(accountBalances)) {
-        writeStream.write(`${account},${balance.toFixed(2)}\n`);
-      }
-
-      writeStream.end();
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-    });
-  }
-  private async writeLinesToFile(
-    header: string,
-    lines: string[],
-    outputFile: string,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const writeStream = createWriteStream(outputFile);
-      writeStream.write(`${header}\n`);
-      for (const l of lines) {
-        writeStream.write(`${l}\n`);
-      }
-      writeStream.end();
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-    });
   }
 
   yearly() {
@@ -264,6 +221,29 @@ export class ReportsService {
     fs.writeFileSync(outputFile, output.join('\n'));
     this.states.yearly = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
   }
+
+  private processYearlyChunkWithWorker(
+    files: string[],
+    tmpDir: string,
+  ): Promise<Record<string, number>> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        path.resolve(__dirname, '../workers', 'yearly.js'),
+      );
+
+      worker.postMessage({ files, tmpDir });
+      worker.on('message', (result: WorkerResponse) => {
+        if (result.error) {
+          reject(new Error(result.error));
+        } else {
+          resolve(result as Record<string, number>);
+        }
+        worker.terminate();
+      });
+      worker.on('error', reject);
+    });
+  }
+
   async asyncYearly() {
     this.states.yearly = 'starting';
     const start = performance.now();
@@ -365,6 +345,27 @@ export class ReportsService {
       `Assets = Liabilities + Equity, ${totalAssets.toFixed(2)} = ${(totalLiabilities + totalEquity).toFixed(2)}`,
     );
     return output;
+  }
+
+  private processFsChunkWithWorker(
+    files: string[],
+    tmpDir: string,
+    categories: Record<string, Record<string, string[]>>,
+  ): Promise<Record<string, number>> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(path.resolve(__dirname, '../workers', 'fs.js'));
+      const balance = this.createEmptyBalanceSheet(categories);
+      worker.postMessage({ files, tmpDir, balance });
+      worker.on('message', (result: WorkerResponse) => {
+        if (result.error) {
+          reject(new Error(result.error));
+        } else {
+          resolve(result as Record<string, number>);
+        }
+        worker.terminate();
+      });
+      worker.on('error', reject);
+    });
   }
 
   async asyncFs() {
