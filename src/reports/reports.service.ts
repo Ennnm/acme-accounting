@@ -68,14 +68,14 @@ export class ReportsService {
 
     // Process chunks in parallel using worker threads
     const results = await Promise.all(
-      chunks.map((chunk) => this.processChunkWithWorker(chunk, tmpDir)),
+      chunks.map((chunk) => this.processAccountChunkWithWorker(chunk, tmpDir)),
     );
 
     // Merge results from all workers
     const accountBalances = this.mergeResults(results);
 
     // Write results using streams
-    await this.writeResultsToFile(accountBalances, outputFile);
+    await this.writeAccountResultsToFile(accountBalances, outputFile);
 
     this.states.accounts = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
     return accountBalances;
@@ -88,7 +88,7 @@ export class ReportsService {
     );
   }
 
-  private processChunkWithWorker(
+  private processAccountChunkWithWorker(
     files: string[],
     tmpDir: string,
   ): Promise<Record<string, number>> {
@@ -141,18 +141,77 @@ export class ReportsService {
     });
   }
 
+  private processYearlyChunkWithWorker(
+    files: string[],
+    tmpDir: string,
+  ): Promise<Record<string, number>> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(
+        `
+        const { parentPort } = require('worker_threads');
+        const { createReadStream } = require('fs');
+        const { createInterface } = require('readline');
+        const path = require('path');
+
+        async function processFiles(files, tmpDir) {
+          const cashByYear = {};
+
+          for (const file of files) {
+            const fileStream = createReadStream(path.join(tmpDir, file));
+            const rl = createInterface({ input: fileStream });
+
+            for await (const line of rl) {
+              const [date, account, , debit, credit] = line.split(',');
+              if (account === 'Cash') {
+                const year = new Date(date).getFullYear();
+                if (!cashByYear[year]) {
+                  cashByYear[year] = 0;
+                }
+                cashByYear[year] +=
+                  parseFloat(String(debit || 0)) - parseFloat(String(credit || 0));
+              }
+            }
+          }
+          return cashByYear;
+        }
+
+        parentPort.on('message', async ({ files, tmpDir }) => {
+          try {
+            const result = await processFiles(files, tmpDir);
+            parentPort.postMessage(result);
+          } catch (error) {
+            parentPort.postMessage({ error: error.message });
+          }
+        });
+      `,
+        { eval: true },
+      );
+
+      worker.postMessage({ files, tmpDir });
+      worker.on('message', (result: WorkerResponse) => {
+        if (result.error) {
+          reject(new Error(result.error));
+        } else {
+          resolve(result as Record<string, number>);
+        }
+        worker.terminate();
+      });
+      worker.on('error', reject);
+    });
+  }
+
   private mergeResults(
     results: Record<string, number>[],
   ): Record<string, number> {
-    return results.reduce((acc, curr) => {
-      for (const [account, balance] of Object.entries(curr)) {
-        acc[account] = (acc[account] || 0) + balance;
+    return results.reduce((total, curr) => {
+      for (const [key, val] of Object.entries(curr)) {
+        total[key] = (total[key] || 0) + val;
       }
-      return acc;
+      return total;
     }, {});
   }
 
-  private async writeResultsToFile(
+  private async writeAccountResultsToFile(
     accountBalances: Record<string, number>,
     outputFile: string,
   ): Promise<void> {
@@ -164,6 +223,21 @@ export class ReportsService {
         writeStream.write(`${account},${balance.toFixed(2)}\n`);
       }
 
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+  }
+  private async writeYearlyResultsToFile(
+    cashByYear: string[],
+    outputFile: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const writeStream = createWriteStream(outputFile);
+      writeStream.write('Financial Year,Cash Balance\n');
+      for (const l of cashByYear) {
+        writeStream.write(`${l}\n`);
+      }
       writeStream.end();
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
@@ -202,6 +276,31 @@ export class ReportsService {
         output.push(`${year},${cashByYear[year].toFixed(2)}`);
       });
     fs.writeFileSync(outputFile, output.join('\n'));
+    this.states.yearly = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
+  }
+  async asyncYearly() {
+    this.states.yearly = 'starting';
+    const start = performance.now();
+    const tmpDir = 'tmp';
+    const outputFile = 'out/yearly.csv';
+    const files = (await fsPromises.readdir(tmpDir)).filter(
+      (file) => file.endsWith('.csv') && file !== 'yearly.csv',
+    );
+    const chunks = this.splitIntoChunks(files, 4); // Process in 4 parallel chunks
+
+    const results = await Promise.all(
+      chunks.map((chunk) => this.processYearlyChunkWithWorker(chunk, tmpDir)),
+    );
+
+    // Merge results from all workers
+    const cashByYear = this.mergeResults(results);
+    const output: string[] = [];
+    Object.keys(cashByYear)
+      .sort()
+      .forEach((year) => {
+        output.push(`${year},${cashByYear[year].toFixed(2)}`);
+      });
+    await this.writeYearlyResultsToFile(output, outputFile);
     this.states.yearly = `finished in ${((performance.now() - start) / 1000).toFixed(2)}`;
   }
 

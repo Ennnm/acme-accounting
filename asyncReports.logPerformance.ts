@@ -3,7 +3,7 @@ import { ReportsService } from './src/reports/reports.service';
 
 class ReportServiceLogPerformance {
   svc = new ReportsService();
-  metricsFolder: string = 'metrics/reports';
+  metricsFolder: string = 'metrics/reports/enhanced';
 
   private extractTime(state: string): number {
     const match = state.match(/finished in (\d+\.?\d*)/);
@@ -38,7 +38,7 @@ class ReportServiceLogPerformance {
 
   async run() {
     await this.svc.asyncAccounts();
-    this.svc.yearly();
+    await this.svc.asyncYearly();
     this.svc.fs();
   }
 }
