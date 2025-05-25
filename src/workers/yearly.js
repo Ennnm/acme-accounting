@@ -9,17 +9,21 @@ async function processFiles(files, tmpDir) {
   for (const file of files) {
     const fileStream = createReadStream(path.join(tmpDir, file));
     const rl = createInterface({ input: fileStream });
-
-    for await (const line of rl) {
-      const [date, account, , debit, credit] = line.split(',');
-      if (account === 'Cash') {
-        const year = new Date(date).getFullYear();
-        if (!cashByYear[year]) {
-          cashByYear[year] = 0;
+    try {
+      for await (const line of rl) {
+        const [date, account, , debit, credit] = line.split(',');
+        if (account === 'Cash') {
+          const year = new Date(date).getFullYear();
+          if (!cashByYear[year]) {
+            cashByYear[year] = 0;
+          }
+          cashByYear[year] +=
+            parseFloat(String(debit || 0)) - parseFloat(String(credit || 0));
         }
-        cashByYear[year] +=
-          parseFloat(String(debit || 0)) - parseFloat(String(credit || 0));
       }
+    } finally {
+      rl.close();
+      fileStream.destroy();
     }
   }
   return cashByYear;
@@ -31,5 +35,7 @@ parentPort.on('message', async ({ files, tmpDir }) => {
     parentPort.postMessage(result);
   } catch (error) {
     parentPort.postMessage({ error: error.message });
+  } finally {
+    parentPort.close();
   }
 });
