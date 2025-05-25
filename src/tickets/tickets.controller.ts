@@ -1,26 +1,9 @@
 import { Body, ConflictException, Controller, Get, Post } from '@nestjs/common';
 import { Company } from '../../db/models/Company';
-import {
-  Ticket,
-  TicketCategory,
-  TicketStatus,
-  TicketType,
-} from '../../db/models/Ticket';
 import { User, UserRole } from '../../db/models/User';
 
-interface newTicketDto {
-  type: TicketType;
-  companyId: number;
-}
-
-interface TicketDto {
-  id: number;
-  type: TicketType;
-  companyId: number;
-  assigneeId: number;
-  status: TicketStatus;
-  category: TicketCategory;
-}
+import { Ticket, TicketType } from '../../db/models/Ticket';
+import { newTicketDto, TicketDto } from './tickets.interface';
 
 @Controller('api/v1/tickets')
 export class TicketsController {
